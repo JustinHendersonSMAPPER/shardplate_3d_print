@@ -1,0 +1,43 @@
+{
+  "name": "dalinar_shardplate",
+  "colors": {
+    "primary_color": "#708090",
+    "secondary_color": "#708090",
+    "accent_color": "#FFD700",
+    "glow_color": "#00BFFF",
+    "metallic": 0.8,
+    "roughness": 0.3,
+    "emission_strength": 0.0
+  },
+  "size": {
+    "size_name": "L",
+    "height": null,
+    "chest_circumference": null,
+    "waist_circumference": null,
+    "hip_circumference": null,
+    "shoulder_width": null,
+    "arm_length": null,
+    "leg_length": null,
+    "head_circumference": null,
+    "hand_length": null,
+    "foot_length": null,
+    "print_scale": 1.0,
+    "clearance_mm": 20.0
+  },
+  "generation": {
+    "generate_helmet": true,
+    "generate_chest": true,
+    "generate_pauldrons": true,
+    "generate_gauntlets": true,
+    "generate_vambraces": true,
+    "generate_cuisses": true,
+    "generate_greaves": true,
+    "generate_sabatons": true,
+    "include_strap_mounts": true,
+    "detail_level": 2,
+    "split_for_printing": true,
+    "hollow_pieces": true,
+    "output_format": "stl",
+    "output_directory": "./output"
+  }
+}
