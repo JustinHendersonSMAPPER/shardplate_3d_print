@@ -110,6 +110,68 @@ class ArmorPieceGenerator(ABC):
         obj = self.finalize(obj)
         return self.export(obj, output_dir)
 
+    # --- Segmented articulation methods ---
+
+    def generate_segments(self) -> dict[str, Any]:
+        """Generate named segments instead of one monolithic mesh.
+
+        Override in subclasses to produce articulated segments.
+        Default returns the monolithic mesh as a single segment.
+        """
+        obj = self.generate()
+        obj = self.finalize(obj)
+        return {self.name: obj}
+
+    def export_segments(
+        self,
+        segments: dict[str, Any],
+        output_dir: str | Path,
+    ) -> list[Path]:
+        """Export each segment as a separate STL into a subdirectory."""
+        output_dir = Path(output_dir) / self.name
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        paths = []
+        for seg_name, obj in segments.items():
+            filepath = output_dir / f"{seg_name}.stl"
+            self.ctx.export_stl(obj, str(filepath))
+            paths.append(filepath)
+        return paths
+
+    def split_for_build_plate(
+        self,
+        segments: dict[str, Any],
+        plate_x: float = 256.0,
+        plate_y: float = 256.0,
+        plate_z: float = 256.0,
+    ) -> dict[str, Any]:
+        """Check each segment against build plate, split any that don't fit.
+
+        Naming convention: segment_name_sec1, segment_name_sec2, etc.
+        """
+        result: dict[str, Any] = {}
+        for seg_name, obj in segments.items():
+            parts = self.ctx.split_object_for_plate(
+                obj, plate_x, plate_y, plate_z, base_name=seg_name
+            )
+            for part_name, part_obj in parts:
+                result[part_name] = part_obj
+        return result
+
+    def generate_and_export_segmented(
+        self,
+        output_dir: str | Path,
+        plate_x: float = 256.0,
+        plate_y: float = 256.0,
+        plate_z: float = 256.0,
+        auto_split: bool = True,
+    ) -> list[Path]:
+        """Full pipeline: generate segments -> split for plate -> export."""
+        segments = self.generate_segments()
+        if auto_split:
+            segments = self.split_for_build_plate(segments, plate_x, plate_y, plate_z)
+        return self.export_segments(segments, output_dir)
+
 
 @dataclass
 class SymmetricArmorPieceGenerator(ArmorPieceGenerator):
@@ -166,3 +228,50 @@ class SymmetricArmorPieceGenerator(ArmorPieceGenerator):
         self.ctx.export_stl(right_obj, str(right_path))
 
         return left_path, right_path
+
+    # --- Segmented articulation methods for symmetric pieces ---
+
+    def generate_segments_base(self) -> dict[str, Any]:
+        """Generate segmented output for the base (left) side.
+
+        Override in subclasses to produce articulated segments.
+        Default returns the monolithic left mesh as a single segment.
+        """
+        obj = self.generate_base()
+        obj = self.finalize(obj)
+        return {f"{self._base_name}_left": obj}
+
+    def _mirror_segments(self, segments: dict[str, Any]) -> dict[str, Any]:
+        """Mirror a dict of segments from left to right."""
+        mirrored: dict[str, Any] = {}
+        for seg_name, obj in segments.items():
+            right_name = seg_name.replace("_left", "_right")
+            mirrored[right_name] = self.ctx.mirror_object(obj, axis="X", name=right_name)
+        return mirrored
+
+    def export_pair_segmented(
+        self,
+        output_dir: str | Path,
+        plate_x: float = 256.0,
+        plate_y: float = 256.0,
+        plate_z: float = 256.0,
+        auto_split: bool = True,
+    ) -> list[Path]:
+        """Generate and export segmented pairs for both sides."""
+        self.side = "left"
+        left_segments = self.generate_segments_base()
+        right_segments = self._mirror_segments(left_segments)
+
+        all_paths: list[Path] = []
+
+        for side_label, segments in [("left", left_segments), ("right", right_segments)]:
+            if auto_split:
+                segments = self.split_for_build_plate(segments, plate_x, plate_y, plate_z)
+            seg_dir = Path(output_dir) / f"{self._base_name}_{side_label}"
+            seg_dir.mkdir(parents=True, exist_ok=True)
+            for seg_name, obj in segments.items():
+                filepath = seg_dir / f"{seg_name}.stl"
+                self.ctx.export_stl(obj, str(filepath))
+                all_paths.append(filepath)
+
+        return all_paths

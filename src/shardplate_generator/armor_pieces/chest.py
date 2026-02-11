@@ -37,6 +37,140 @@ class ChestGenerator(ArmorPieceGenerator):
         else:
             return self._generate_unified_chest()
 
+    def generate_segments(self) -> dict[str, Any]:
+        """Generate segmented chest: upper breastplate + 3 ab plates + backplate."""
+        dims = self.dimensions
+        ctx = self.ctx
+        thickness = self.measurements.scaled(self.measurements.plate_thickness)
+        width = dims.get("width", 0.5)
+        height = dims.get("height", 0.5)
+        depth = dims.get("depth", 0.32)
+
+        clearance_gap = 0.0005  # 0.5mm between overlapping plates
+
+        # --- Segment 1: Upper breastplate (pecs, collar, pauldron mounts) ---
+        upper_breast = self._create_upper_breastplate(dims, thickness)
+        # Pin holes at bottom for ab plate 1 connection
+        for x_off in [-width * 0.15, width * 0.15]:
+            upper_breast = ctx.create_alignment_pin_hole(
+                upper_breast,
+                location=(x_off, -depth / 3, -height / 8),
+                direction=(0, 0, -1),
+            )
+        upper_breast = self.add_shardplate_details(upper_breast)
+        upper_breast.name = "chest_breastplate_upper"
+
+        # --- Segments 2-4: Three overlapping abdominal plates ---
+        ab_plates: dict[str, Any] = {}
+        plate_height = height / 6
+        start_z = -height / 8
+
+        for i in range(3):
+            z_pos = start_z - i * plate_height * 0.8 - clearance_gap * (i + 1)
+            plate_width = width * 0.8 - i * width * 0.05
+
+            ab_plate = ctx.create_cube(
+                size=1.0,
+                location=(0, -depth / 3, z_pos),
+                name=f"AbPlate_{i}",
+            )
+            ctx.scale_object(ab_plate, (plate_width, thickness * 1.5, plate_height))
+            ctx.rotate_object(ab_plate, (5 + i * 3, 0, 0))
+            ab_plate = ctx.add_bevel(ab_plate, width=thickness * 0.3, segments=2)
+
+            # Pin posts on top to connect to plate above
+            if i == 0:
+                for x_off in [-width * 0.15, width * 0.15]:
+                    ab_plate = ctx.create_alignment_pin_post(
+                        ab_plate,
+                        location=(x_off, -depth / 3, z_pos + plate_height / 2),
+                        direction=(0, 0, 1),
+                    )
+            # Pin holes/posts between ab plates
+            if i < 2:
+                for x_off in [-width * 0.12, width * 0.12]:
+                    ab_plate = ctx.create_alignment_pin_hole(
+                        ab_plate,
+                        location=(x_off, -depth / 3, z_pos - plate_height / 2),
+                        direction=(0, 0, -1),
+                    )
+            if i > 0:
+                prev_z = start_z - (i - 1) * plate_height * 0.8 - clearance_gap * i
+                for x_off in [-width * 0.12, width * 0.12]:
+                    ab_plate = ctx.create_alignment_pin_post(
+                        ab_plate,
+                        location=(x_off, -depth / 3, z_pos + plate_height / 2),
+                        direction=(0, 0, 1),
+                    )
+
+            ab_plate = self.add_shardplate_details(ab_plate)
+            ab_plate.name = f"chest_ab_plate_{i + 1}"
+            ab_plates[ab_plate.name] = ab_plate
+
+        # --- Segment 5: Backplate ---
+        backplate = self.generate_backplate()
+        backplate = self.finalize(backplate)
+        backplate.name = "chest_backplate"
+
+        segments = {"chest_breastplate_upper": upper_breast}
+        segments.update(ab_plates)
+        segments["chest_backplate"] = backplate
+        return segments
+
+    def _create_upper_breastplate(
+        self, dims: dict[str, float], thickness: float
+    ) -> Any:
+        """Create the upper breastplate (chest area without ab plates)."""
+        ctx = self.ctx
+        width = dims.get("width", 0.5)
+        height = dims.get("height", 0.5)
+        depth = dims.get("depth", 0.32)
+
+        # Main shell
+        outer_shell = ctx.create_cylinder(
+            radius=depth / 2 + thickness,
+            depth=height * 0.6,  # Upper portion only
+            location=(0, 0, height * 0.1),
+            vertices=64,
+            name="UpperBreastOuter",
+        )
+        ctx.rotate_object(outer_shell, (90, 0, 0))
+
+        inner_shell = ctx.create_cylinder(
+            radius=depth / 2,
+            depth=height * 0.6 + 0.01,
+            location=(0, 0, height * 0.1),
+            vertices=64,
+            name="UpperBreastInner",
+        )
+        ctx.rotate_object(inner_shell, (90, 0, 0))
+
+        upper = ctx.boolean_difference(outer_shell, inner_shell, name="UpperBreastShell")
+
+        # Cut to front half
+        back_cutter = ctx.create_cube(
+            size=max(width, height, depth) * 2,
+            location=(0, depth / 2, height * 0.1),
+            name="BackCutter",
+        )
+        upper = ctx.boolean_difference(upper, back_cutter)
+
+        # Trim width
+        for side in [-1, 1]:
+            side_cutter = ctx.create_cube(
+                size=max(width, height, depth) * 2,
+                location=(side * (width / 2 + depth), 0, 0),
+                name=f"SideCutter_{side}",
+            )
+            upper = ctx.boolean_difference(upper, side_cutter)
+
+        # Add chest definition and collar
+        upper = self._add_chest_definition(upper, dims, thickness)
+        upper = self._add_collar(upper, dims, thickness)
+        upper = self._add_pauldron_mounts(upper, dims, thickness)
+
+        return upper
+
     def generate_breastplate(self) -> Any:
         """Generate the front breastplate."""
         dims = self.dimensions

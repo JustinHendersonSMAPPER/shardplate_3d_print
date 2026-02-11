@@ -154,6 +154,17 @@ def generate(config_file: str, output: str | None) -> None:
     "--pieces",
     help="Comma-separated list of pieces to generate (helmet,chest,pauldrons,gauntlets,vambraces,cuisses,greaves,sabatons)",
 )
+@click.option(
+    "--segmented/--monolithic",
+    default=True,
+    help="Separate articulated segments (default) or monolithic meshes",
+)
+@click.option(
+    "--build-plate",
+    type=str,
+    default=None,
+    help="Build plate preset (x1-carbon, a1-mini) or custom WxDxH in mm (e.g. 256x256x256)",
+)
 def quick(
     size: str,
     scale: float,
@@ -163,6 +174,8 @@ def quick(
     detail_level: int,
     no_straps: bool,
     pieces: str | None,
+    segmented: bool,
+    build_plate: str | None,
 ) -> None:
     """Quick generation with command-line options.
 
@@ -182,10 +195,34 @@ def quick(
 
         size_config = SizeConfig(size_name=size, print_scale=scale)
 
+        # Parse build plate dimensions
+        plate_x, plate_y, plate_z = 256.0, 256.0, 256.0
+        auto_split = True
+        if build_plate:
+            presets = {
+                "x1-carbon": (256.0, 256.0, 256.0),
+                "a1-mini": (180.0, 180.0, 180.0),
+            }
+            if build_plate.lower() in presets:
+                plate_x, plate_y, plate_z = presets[build_plate.lower()]
+            else:
+                try:
+                    parts = build_plate.lower().split("x")
+                    plate_x, plate_y, plate_z = float(parts[0]), float(parts[1]), float(parts[2])
+                except (ValueError, IndexError):
+                    click.echo(f"Invalid build plate format '{build_plate}', using 256x256x256")
+        else:
+            auto_split = False
+
         gen_config = GenerationConfig(
             output_directory=output,
             detail_level=detail_level,
             include_strap_mounts=not no_straps,
+            segmented_output=segmented,
+            build_plate_x=plate_x,
+            build_plate_y=plate_y,
+            build_plate_z=plate_z,
+            auto_split_for_plate=auto_split,
         )
 
         # Handle piece selection

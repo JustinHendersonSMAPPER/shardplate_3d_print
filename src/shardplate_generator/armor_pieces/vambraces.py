@@ -54,6 +54,53 @@ class VambraceGenerator(SymmetricArmorPieceGenerator):
 
         return vambrace
 
+    def generate_segments_base(self) -> dict[str, Any]:
+        """Generate segmented vambrace: forearm shell + elbow cup."""
+        dims = self.dimensions
+        ctx = self.ctx
+        thickness = self.measurements.scaled(self.measurements.plate_thickness)
+
+        # --- Segment 1: Forearm shell ---
+        forearm_shell = self._create_tapered_shell(dims, thickness)
+        forearm_shell = self._add_plate_segments(forearm_shell, dims, thickness)
+        forearm_shell = self._add_ridge_details(forearm_shell, dims, thickness)
+        forearm_shell = self._add_wrist_section(forearm_shell, dims, thickness)
+
+        # Add pin holes at elbow junction (top of forearm)
+        length = dims.get("length", 0.28)
+        upper_circ = dims.get("upper_circumference", 0.30)
+        upper_radius = upper_circ / (2 * math.pi)
+        pin_y = length / 2
+        for x_off in [-upper_radius * 0.3, upper_radius * 0.3]:
+            forearm_shell = ctx.create_alignment_pin_hole(
+                forearm_shell,
+                location=(x_off, pin_y, 0),
+                direction=(0, 1, 0),
+            )
+
+        forearm_shell = self.add_shardplate_details(forearm_shell)
+        forearm_shell.name = f"{self._base_name}_forearm_left"
+
+        # --- Segment 2: Elbow cup (separate) ---
+        elbow_cup = self._create_elbow_cup_standalone(dims, thickness)
+
+        # Add pin posts at elbow junction (bottom of cup)
+        elbow_radius = upper_circ / (2 * math.pi) * 1.2
+        for x_off in [-upper_radius * 0.3, upper_radius * 0.3]:
+            elbow_cup = ctx.create_alignment_pin_post(
+                elbow_cup,
+                location=(x_off, length / 2 - 0.001, 0),
+                direction=(0, 1, 0),
+            )
+
+        elbow_cup = self.add_shardplate_details(elbow_cup)
+        elbow_cup.name = f"{self._base_name}_elbow_left"
+
+        return {
+            f"{self._base_name}_forearm_left": forearm_shell,
+            f"{self._base_name}_elbow_left": elbow_cup,
+        }
+
     def _create_tapered_shell(self, dims: dict[str, float], thickness: float) -> Any:
         """Create the main tapered forearm shell."""
         ctx = self.ctx
@@ -94,7 +141,7 @@ class VambraceGenerator(SymmetricArmorPieceGenerator):
     def _add_elbow_cup(
         self, vambrace: Any, dims: dict[str, float], thickness: float
     ) -> Any:
-        """Add elbow protection cup."""
+        """Add elbow protection cup (boolean-unioned into main mesh)."""
         ctx = self.ctx
         length = dims.get("length", 0.28)
         upper_circ = dims.get("upper_circumference", 0.30)
@@ -143,6 +190,53 @@ class VambraceGenerator(SymmetricArmorPieceGenerator):
         vambrace = ctx.boolean_union(vambrace, elbow_point)
 
         return vambrace
+
+    def _create_elbow_cup_standalone(
+        self, dims: dict[str, float], thickness: float
+    ) -> Any:
+        """Create elbow cup as a standalone segment."""
+        ctx = self.ctx
+        length = dims.get("length", 0.28)
+        upper_circ = dims.get("upper_circumference", 0.30)
+
+        elbow_radius = upper_circ / (2 * math.pi) * 1.2
+
+        elbow_cup = ctx.create_uv_sphere(
+            radius=elbow_radius,
+            location=(0, length / 2 + elbow_radius * 0.3, 0),
+            segments=24,
+            ring_count=12,
+            name="ElbowCupSeg",
+        )
+
+        cup_cutter = ctx.create_cube(
+            size=elbow_radius * 3,
+            location=(0, length / 2 + elbow_radius * 1.3, 0),
+            name="CupCutter",
+        )
+        elbow_cup = ctx.boolean_difference(elbow_cup, cup_cutter)
+
+        inner_cup = ctx.create_uv_sphere(
+            radius=elbow_radius - thickness,
+            location=(0, length / 2 + elbow_radius * 0.3, 0),
+            segments=24,
+            ring_count=12,
+            name="ElbowInner",
+        )
+        elbow_cup = ctx.boolean_difference(elbow_cup, inner_cup)
+
+        elbow_point = ctx.create_cone(
+            radius1=elbow_radius * 0.3,
+            radius2=0,
+            depth=elbow_radius * 0.4,
+            location=(0, length / 2 + elbow_radius * 0.5, 0),
+            vertices=16,
+            name="ElbowPoint",
+        )
+        ctx.rotate_object(elbow_point, (-90, 0, 0))
+        elbow_cup = ctx.boolean_union(elbow_cup, elbow_point)
+
+        return elbow_cup
 
     def _add_plate_segments(
         self, vambrace: Any, dims: dict[str, float], thickness: float

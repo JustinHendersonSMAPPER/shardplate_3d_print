@@ -58,6 +58,53 @@ class GreaveGenerator(SymmetricArmorPieceGenerator):
 
         return greave
 
+    def generate_segments_base(self) -> dict[str, Any]:
+        """Generate segmented greave: shin shell + calf plate."""
+        dims = self.dimensions
+        ctx = self.ctx
+        thickness = self.measurements.scaled(self.measurements.plate_thickness)
+        length = dims.get("length", 0.42)
+        upper_circ = dims.get("upper_circumference", 0.42)
+        upper_radius = upper_circ / (2 * math.pi)
+
+        # --- Segment 1: Shin shell (includes shin plate, knee flare, ankle) ---
+        shin_shell = self._create_shin_shell(dims, thickness)
+        shin_shell = self._add_shin_plate(shin_shell, dims, thickness)
+        shin_shell = self._add_knee_flare(shin_shell, dims, thickness)
+        shin_shell = self._add_ankle_section(shin_shell, dims, thickness)
+        if self.detail_level >= 2:
+            shin_shell = self._add_ridge_details(shin_shell, dims, thickness)
+
+        # Add pin holes for calf plate attachment
+        for x_off in [-upper_radius * 0.3, upper_radius * 0.3]:
+            shin_shell = ctx.create_alignment_pin_hole(
+                shin_shell,
+                location=(x_off, length * 0.15, -upper_radius * 0.5),
+                direction=(0, 0, -1),
+            )
+
+        shin_shell = self.add_shardplate_details(shin_shell)
+        shin_shell.name = f"{self._base_name}_shin_left"
+
+        # --- Segment 2: Calf plate (separate for print orientation) ---
+        calf_plate = self._create_calf_plate_standalone(dims, thickness)
+
+        # Add pin posts to mate with shin shell
+        for x_off in [-upper_radius * 0.3, upper_radius * 0.3]:
+            calf_plate = ctx.create_alignment_pin_post(
+                calf_plate,
+                location=(x_off, length * 0.15, -upper_radius * 0.5 + 0.001),
+                direction=(0, 0, -1),
+            )
+
+        calf_plate = self.add_shardplate_details(calf_plate)
+        calf_plate.name = f"{self._base_name}_calf_left"
+
+        return {
+            f"{self._base_name}_shin_left": shin_shell,
+            f"{self._base_name}_calf_left": calf_plate,
+        }
+
     def _create_shin_shell(self, dims: dict[str, float], thickness: float) -> Any:
         """Create the main shin armor shell."""
         ctx = self.ctx
@@ -129,7 +176,7 @@ class GreaveGenerator(SymmetricArmorPieceGenerator):
     def _add_calf_plate(
         self, greave: Any, dims: dict[str, float], thickness: float
     ) -> Any:
-        """Add calf muscle protection plate."""
+        """Add calf muscle protection plate (boolean-unioned into main mesh)."""
         ctx = self.ctx
         length = dims.get("length", 0.42)
         upper_circ = dims.get("upper_circumference", 0.42)
@@ -166,6 +213,41 @@ class GreaveGenerator(SymmetricArmorPieceGenerator):
         greave = ctx.boolean_union(greave, calf_plate)
 
         return greave
+
+    def _create_calf_plate_standalone(
+        self, dims: dict[str, float], thickness: float
+    ) -> Any:
+        """Create calf plate as a standalone segment."""
+        ctx = self.ctx
+        length = dims.get("length", 0.42)
+        upper_circ = dims.get("upper_circumference", 0.42)
+        upper_radius = upper_circ / (2 * math.pi)
+
+        calf_plate = ctx.create_uv_sphere(
+            radius=upper_radius * 0.6,
+            location=(0, length * 0.15, -upper_radius * 0.7),
+            segments=24,
+            ring_count=12,
+            name="CalfPlateSeg",
+        )
+
+        calf_cutter = ctx.create_cube(
+            size=upper_radius * 2,
+            location=(0, length * 0.15, -upper_radius * 1.5),
+            name="CalfCutter",
+        )
+        calf_plate = ctx.boolean_difference(calf_plate, calf_cutter)
+
+        calf_inner = ctx.create_uv_sphere(
+            radius=upper_radius * 0.6 - thickness,
+            location=(0, length * 0.15, -upper_radius * 0.7),
+            segments=24,
+            ring_count=12,
+            name="CalfInner",
+        )
+        calf_plate = ctx.boolean_difference(calf_plate, calf_inner)
+
+        return calf_plate
 
     def _add_knee_flare(
         self, greave: Any, dims: dict[str, float], thickness: float

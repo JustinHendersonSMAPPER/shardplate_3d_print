@@ -61,6 +61,104 @@ class SabatonGenerator(SymmetricArmorPieceGenerator):
 
         return sabaton
 
+    def generate_segments_base(self) -> dict[str, Any]:
+        """Generate segmented sabaton: foot shell + ankle cuff + 3 toe segments."""
+        dims = self.dimensions
+        ctx = self.ctx
+        thickness = self.measurements.scaled(self.measurements.plate_thickness)
+        foot_length = dims.get("length", 0.29)
+        foot_width = dims.get("width", 0.12)
+        ankle_circ = dims.get("ankle_circumference", 0.26)
+        ankle_radius = ankle_circ / (2 * math.pi)
+
+        # --- Segment 1: Foot shell (body + instep + sole + heel) ---
+        foot_shell = self._create_foot_shell(dims, thickness)
+        foot_shell = self._add_instep_plate(foot_shell, dims, thickness)
+        foot_shell = self._add_sole(foot_shell, dims, thickness)
+        foot_shell = self._add_heel_guard(foot_shell, dims, thickness)
+
+        # Pin holes for ankle cuff connection
+        for x_off in [-ankle_radius * 0.4, ankle_radius * 0.4]:
+            foot_shell = ctx.create_alignment_pin_hole(
+                foot_shell,
+                location=(x_off, -foot_length * 0.15, foot_width * 0.4),
+                direction=(0, 0, 1),
+            )
+
+        foot_shell = self.add_shardplate_details(foot_shell)
+        foot_shell.name = f"{self._base_name}_foot_left"
+
+        # --- Segment 2: Ankle cuff (separate) ---
+        ankle_cuff = self._create_ankle_cuff_standalone(dims, thickness)
+
+        # Pin posts for foot shell connection
+        for x_off in [-ankle_radius * 0.4, ankle_radius * 0.4]:
+            ankle_cuff = ctx.create_alignment_pin_post(
+                ankle_cuff,
+                location=(x_off, -foot_length * 0.15, foot_width * 0.4 - 0.001),
+                direction=(0, 0, 1),
+            )
+
+        ankle_cuff = self.add_shardplate_details(ankle_cuff)
+        ankle_cuff.name = f"{self._base_name}_ankle_left"
+
+        segments = {
+            f"{self._base_name}_foot_left": foot_shell,
+            f"{self._base_name}_ankle_left": ankle_cuff,
+        }
+
+        # --- Segments 3-5: Toe segments with elastic cord channels ---
+        toe_length = foot_length * 0.35
+        num_segments = 3
+
+        for i in range(num_segments):
+            y_pos = foot_length * 0.35 + i * toe_length / num_segments * 0.85
+            taper = 1.0 - i * 0.15
+
+            toe_seg = ctx.create_cube(
+                size=1.0,
+                location=(0, y_pos, foot_width * 0.15),
+                name=f"ToeSegment_{i}",
+            )
+            ctx.scale_object(
+                toe_seg,
+                (
+                    foot_width * taper + thickness * 2,
+                    toe_length / num_segments * 0.9,
+                    foot_width * 0.35 * taper + thickness * 2,
+                ),
+            )
+            toe_seg = ctx.add_bevel(toe_seg, width=thickness, segments=2)
+
+            # Add elastic cord channel through each toe segment
+            seg_len = toe_length / num_segments * 0.9
+            toe_seg = ctx.create_cord_channel(
+                toe_seg,
+                start=(0, y_pos - seg_len / 2 - 0.001, foot_width * 0.15),
+                end=(0, y_pos + seg_len / 2 + 0.001, foot_width * 0.15),
+                diameter=0.002,
+            )
+
+            # Pin alignment between toe segments
+            if i > 0:
+                toe_seg = ctx.create_alignment_pin_post(
+                    toe_seg,
+                    location=(0, y_pos - seg_len / 2, foot_width * 0.15),
+                    direction=(0, -1, 0),
+                )
+            if i < num_segments - 1:
+                toe_seg = ctx.create_alignment_pin_hole(
+                    toe_seg,
+                    location=(0, y_pos + seg_len / 2, foot_width * 0.15),
+                    direction=(0, 1, 0),
+                )
+
+            toe_seg = self.add_shardplate_details(toe_seg)
+            toe_seg.name = f"{self._base_name}_toe{i + 1}_left"
+            segments[toe_seg.name] = toe_seg
+
+        return segments
+
     def _create_foot_shell(self, dims: dict[str, float], thickness: float) -> Any:
         """Create the main foot armor shell."""
         ctx = self.ctx
@@ -103,7 +201,7 @@ class SabatonGenerator(SymmetricArmorPieceGenerator):
     def _add_articulated_toes(
         self, sabaton: Any, dims: dict[str, float], thickness: float
     ) -> Any:
-        """Add articulated toe plates."""
+        """Add articulated toe plates (boolean-unioned into main mesh)."""
         ctx = self.ctx
         foot_length = dims.get("length", 0.29)
         foot_width = dims.get("width", 0.12)
@@ -161,7 +259,7 @@ class SabatonGenerator(SymmetricArmorPieceGenerator):
     def _add_ankle_cuff(
         self, sabaton: Any, dims: dict[str, float], thickness: float
     ) -> Any:
-        """Add ankle cuff for greave connection."""
+        """Add ankle cuff for greave connection (boolean-unioned into main mesh)."""
         ctx = self.ctx
         foot_length = dims.get("length", 0.29)
         foot_width = dims.get("width", 0.12)
@@ -210,6 +308,48 @@ class SabatonGenerator(SymmetricArmorPieceGenerator):
             sabaton = ctx.boolean_union(sabaton, guard)
 
         return sabaton
+
+    def _create_ankle_cuff_standalone(
+        self, dims: dict[str, float], thickness: float
+    ) -> Any:
+        """Create ankle cuff as a standalone segment."""
+        ctx = self.ctx
+        foot_length = dims.get("length", 0.29)
+        foot_width = dims.get("width", 0.12)
+        ankle_circ = dims.get("ankle_circumference", 0.26)
+
+        ankle_radius = ankle_circ / (2 * math.pi) + thickness
+        cuff_height = foot_width * 0.6
+
+        cuff_outer = ctx.create_cylinder(
+            radius=ankle_radius, depth=cuff_height,
+            location=(0, -foot_length * 0.15, foot_width * 0.35),
+            vertices=32, name="AnkleCuffSeg",
+        )
+        cuff_inner = ctx.create_cylinder(
+            radius=ankle_radius - thickness, depth=cuff_height + 0.01,
+            location=(0, -foot_length * 0.15, foot_width * 0.35),
+            vertices=32, name="AnkleCuffInner",
+        )
+        cuff = ctx.boolean_difference(cuff_outer, cuff_inner, name="AnkleCuffSeg")
+
+        front_cutter = ctx.create_cube(
+            size=ankle_radius,
+            location=(0, -foot_length * 0.15 + ankle_radius * 0.7, foot_width * 0.35),
+            name="CuffFrontCutter",
+        )
+        cuff = ctx.boolean_difference(cuff, front_cutter)
+
+        for side in [-1, 1]:
+            guard = ctx.create_cube(
+                size=1.0,
+                location=(side * ankle_radius * 0.7, -foot_length * 0.15, foot_width * 0.5),
+                name=f"AnkleGuard_{'L' if side < 0 else 'R'}",
+            )
+            ctx.scale_object(guard, (thickness * 3, ankle_radius * 0.5, cuff_height * 0.4))
+            cuff = ctx.boolean_union(cuff, guard)
+
+        return cuff
 
     def _add_instep_plate(
         self, sabaton: Any, dims: dict[str, float], thickness: float

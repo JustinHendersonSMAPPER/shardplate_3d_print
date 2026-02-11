@@ -97,6 +97,63 @@ class HelmetGenerator(ArmorPieceGenerator):
 
         return helmet
 
+    def generate_segments(self) -> dict[str, Any]:
+        """Generate segmented helmet: front shell + back shell.
+
+        Uses the existing front/back split with pin alignment on the split line.
+        """
+        dims = self.dimensions
+        ctx = self.ctx
+        thickness = self.measurements.scaled(self.measurements.plate_thickness)
+        inner_width = dims.get("inner_width", 0.18)
+        inner_length = dims.get("inner_length", 0.22)
+        inner_height = dims.get("inner_height", 0.26)
+
+        full_helmet = self.generate()
+
+        # Create cutting plane at Y=0 (front/back split)
+        max_dim = max(dims.values()) * 2
+
+        # Front half
+        front_cutter = ctx.create_cube(
+            size=max_dim, location=(0, max_dim / 2, 0), name="FrontCutter",
+        )
+        front_half = ctx.duplicate_object(full_helmet, "HelmetFront")
+        front_half = ctx.boolean_difference(front_half, front_cutter)
+
+        # Back half
+        back_cutter = ctx.create_cube(
+            size=max_dim, location=(0, -max_dim / 2, 0), name="BackCutter",
+        )
+        back_half = ctx.duplicate_object(full_helmet, "HelmetBack")
+        back_half = ctx.boolean_difference(back_half, back_cutter)
+
+        # Remove original
+        ctx.bpy.data.objects.remove(full_helmet, do_unlink=True)
+
+        # Add alignment pins on the cut plane
+        pin_locations = [
+            (-inner_width * 0.2, 0, inner_height * 0.1),
+            (inner_width * 0.2, 0, inner_height * 0.1),
+        ]
+        for pin_loc in pin_locations:
+            front_half = ctx.create_alignment_pin_hole(
+                front_half, location=pin_loc, direction=(0, 1, 0),
+            )
+            back_half = ctx.create_alignment_pin_post(
+                back_half, location=pin_loc, direction=(0, -1, 0),
+            )
+
+        front_half = self.add_shardplate_details(front_half)
+        back_half = self.add_shardplate_details(back_half)
+        front_half.name = "helmet_front"
+        back_half.name = "helmet_back"
+
+        return {
+            "helmet_front": front_half,
+            "helmet_back": back_half,
+        }
+
     def _add_face_plate(
         self, helmet: Any, dims: dict[str, float], thickness: float
     ) -> Any:

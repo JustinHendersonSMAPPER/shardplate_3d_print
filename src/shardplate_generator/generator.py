@@ -47,6 +47,19 @@ class ShardplateGenerator:
             self._measurements = self._create_measurements()
         return self._measurements
 
+    @property
+    def _segmented(self) -> bool:
+        return self.config.generation.segmented_output
+
+    @property
+    def _auto_split(self) -> bool:
+        return self.config.generation.auto_split_for_plate
+
+    @property
+    def _plate_dims(self) -> tuple[float, float, float]:
+        gen = self.config.generation
+        return (gen.build_plate_x, gen.build_plate_y, gen.build_plate_z)
+
     def _create_measurements(self) -> HumanMeasurements:
         """Create HumanMeasurements from config."""
         size_config = self.config.size
@@ -84,6 +97,13 @@ class ShardplateGenerator:
         print(f"Scale: {self.config.size.print_scale}")
         print(f"Colors: Primary {self.config.colors.primary_color}, "
               f"Secondary {self.config.colors.secondary_color}")
+        if self._segmented:
+            print(f"Mode: Segmented (articulated)")
+            if self._auto_split:
+                px, py, pz = self._plate_dims
+                print(f"Build plate: {px:.0f}x{py:.0f}x{pz:.0f}mm (auto-split enabled)")
+        else:
+            print(f"Mode: Monolithic")
         print("-" * 50)
 
         # Generate each piece
@@ -133,6 +153,12 @@ class ShardplateGenerator:
             detail_level=self.config.generation.detail_level,
         )
 
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.generate_and_export_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
+
         if self.config.generation.split_for_printing:
             parts = generator.generate_printable_parts()
             paths = []
@@ -158,6 +184,12 @@ class ShardplateGenerator:
             split_front_back=self.config.generation.split_for_printing,
         )
 
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.generate_and_export_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
+
         if self.config.generation.split_for_printing:
             parts = generator.generate_printable_parts()
             paths = []
@@ -176,11 +208,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = PauldronGenerator(
-            _base_name="pauldron",
+            name="pauldron",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]
@@ -191,11 +229,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = GauntletGenerator(
-            _base_name="gauntlet",
+            name="gauntlet",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]
@@ -206,11 +250,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = VambraceGenerator(
-            _base_name="vambrace",
+            name="vambrace",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]
@@ -221,11 +271,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = CuisseGenerator(
-            _base_name="cuisse",
+            name="cuisse",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]
@@ -236,11 +292,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = GreaveGenerator(
-            _base_name="greave",
+            name="greave",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]
@@ -251,11 +313,17 @@ class ShardplateGenerator:
         self.ctx.clear_scene()
 
         generator = SabatonGenerator(
-            _base_name="sabaton",
+            name="sabaton",
             measurements=self.measurements,
             include_straps=self.config.generation.include_strap_mounts,
             detail_level=self.config.generation.detail_level,
         )
+
+        if self._segmented:
+            px, py, pz = self._plate_dims
+            return generator.export_pair_segmented(
+                output_dir, px, py, pz, self._auto_split
+            )
 
         left_path, right_path = generator.export_pair(output_dir)
         return [left_path, right_path]

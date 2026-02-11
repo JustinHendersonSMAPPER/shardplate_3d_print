@@ -152,6 +152,15 @@ class GenerationConfig:
     split_for_printing: bool = True  # Split large pieces
     hollow_pieces: bool = True  # Hollow for material savings
 
+    # Articulation / segmentation
+    segmented_output: bool = True  # Separate articulated segments (vs monolithic)
+
+    # Build plate dimensions (mm) for auto-splitting
+    build_plate_x: float = 256.0
+    build_plate_y: float = 256.0
+    build_plate_z: float = 256.0
+    auto_split_for_plate: bool = True  # Auto-split pieces exceeding build volume
+
     # Output options
     output_format: str = "stl"  # stl, obj, blend
     output_directory: str = "./output"
